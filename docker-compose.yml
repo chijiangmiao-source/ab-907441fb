@@ -1,0 +1,29 @@
+services:
+  web:
+    build: .
+    image: cpp-audit:latest
+    ports:
+      # 宿主机端口可配置：HOST_PORT 环境变量，默认 8080
+      - "${HOST_PORT:-8080}:8000"
+    environment:
+      PORT: "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=3); assert json.load(r)['status']=='ok'"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 3s
+
+  verify:
+    # 单次服务：核对奇度管网同优分类、欧拉管网零增程边界、
+    # 代码测试、构建结果与 HTTP 冒烟，随后退出并以退出码报告。
+    # 运行：docker compose --profile verify run --rm verify
+    image: cpp-audit:latest
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      WEB_URL: "http://web:8000"
+    command: ["python3", "-m", "app.verify"]
+    restart: "no"
+    profiles: ["verify"]

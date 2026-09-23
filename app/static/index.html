@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>低温冷却管网 · 巡检路线审计</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --panel: #fff; --ink: #1f2933; --muted: #6b7280;
+    --line: #d9dee5; --accent: #1d6fb8; --accent-soft: #e3f0fb;
+    --req: #c0392b; --req-soft: #fbe5e2;
+    --opt: #b7791f; --opt-soft: #fdf0d7;
+    --never: #8a94a0;
+    --ok: #1e7d4f; --ok-soft: #e2f5ec;
+    --bad: #c0392b; --bad-soft: #fbe5e2;
+    --hl: #fff3bf;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 14px/1.5 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--ink); }
+  header { background:#10324f; color:#fff; padding:14px 22px; }
+  header h1 { margin:0; font-size:18px; font-weight:600; }
+  header p { margin:4px 0 0; font-size:12.5px; color:#b9cee0; }
+  .wrap { display:grid; grid-template-columns: 380px 1fr; gap:16px; padding:16px; align-items:start; }
+  @media (max-width: 1000px){ .wrap{ grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:16px; }
+  .panel h2 { margin:0 0 10px; font-size:15px; display:flex; align-items:center; gap:8px; }
+  .panel h2 .hint { font-weight:400; font-size:12px; color:var(--muted); }
+  table.grid { border-collapse:collapse; width:100%; }
+  table.grid td, table.grid th { padding:3px 4px; }
+  table.grid th { text-align:left; font-size:12px; color:var(--muted); font-weight:500; }
+  input[type=text], input[type=number], select {
+    width:100%; padding:5px 7px; border:1px solid var(--line); border-radius:6px; font:inherit; background:#fff; }
+  input.w-short { width:74px; }
+  tr.row-error input, tr.row-error select { border-color:var(--bad); background:var(--bad-soft); }
+  .field-error { outline: 2px solid var(--bad); }
+  .btn { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); background:#fff;
+         border-radius:7px; padding:6px 12px; font:inherit; cursor:pointer; }
+  .btn:hover { background:#f1f4f8; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .btn.primary:hover { background:#175a96; }
+  .btn.danger { color:var(--bad); }
+  .row-actions { margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .icon-btn { border:none; background:none; cursor:pointer; color:var(--muted); font-size:15px; padding:2px 5px; border-radius:4px;}
+  .icon-btn:hover { color:var(--bad); background:var(--bad-soft); }
+  .depot-row { display:flex; align-items:center; gap:10px; margin-top:10px; }
+  #error-box { display:none; border:1px solid var(--bad); background:var(--bad-soft); color:#7a1f16;
+               border-radius:8px; padding:9px 12px; margin-bottom:14px; font-size:13.5px; }
+  #error-box .loc { font-weight:600; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-bottom:14px; }
+  .card { border:1px solid var(--line); border-radius:9px; padding:9px 12px; background:#fbfcfe; }
+  .card .k { font-size:12px; color:var(--muted); }
+  .card .v { font-size:20px; font-weight:700; margin-top:2px; }
+  .card.add .v { color:var(--req); }
+  .card.tot .v { color:var(--accent); }
+  .badge { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px; font-weight:600; }
+  .badge.required { background:var(--req-soft); color:var(--req); }
+  .badge.optional { background:var(--opt-soft); color:var(--opt); }
+  .badge.never { background:#eef1f4; color:var(--never); }
+  .badge.copy1 { background:#eef1f4; color:var(--never); }
+  .vector { font-family:ui-monospace,Menlo,Consolas,monospace; letter-spacing:2px; word-break:break-all;
+            background:#f6f8fa; border:1px solid var(--line); border-radius:6px; padding:6px 9px; font-size:13px; }
+  .vector b { color:var(--req); }
+  .result-grid { display:grid; grid-template-columns: minmax(300px, 1fr) minmax(320px, 1fr); gap:14px; }
+  @media (max-width: 1100px){ .result-grid{ grid-template-columns:1fr; } }
+  svg.graph { width:100%; height:440px; background:#fbfcfe; border:1px solid var(--line); border-radius:8px; }
+  .edge-hit { stroke:transparent; stroke-width:14px; fill:none; cursor:pointer; }
+  .edge-line { fill:none; stroke-width:2.4; }
+  .edge-line.required { stroke:var(--req); }
+  .edge-line.optional { stroke:var(--opt); stroke-dasharray:7 4; }
+  .edge-line.never { stroke:var(--never); }
+  .edge-line.dim { opacity:.18; }
+  .edge-line.selected { stroke-width:5; }
+  .edge-hit.selected { stroke: rgba(29,111,184,.12); }
+  .dup-tag { font:600 10px sans-serif; fill:var(--req); }
+  .node-circle { fill:#fff; stroke:var(--accent); stroke-width:2.2; }
+  .node-circle.odd { stroke:var(--req); stroke-dasharray:4 3; }
+  .node-label { font:600 12px sans-serif; fill:var(--ink); text-anchor:middle; dominant-baseline:central; pointer-events:none;}
+  .depot-ring { fill:none; stroke:var(--ok); stroke-width:3; }
+  .node-g.dim { opacity:.15; }
+  table.data { width:100%; border-collapse:collapse; font-size:13px; }
+  table.data th { position:sticky; top:0; background:#f6f8fa; text-align:left; padding:6px 8px;
+                  font-weight:600; font-size:12px; color:var(--muted); border-bottom:1px solid var(--line); }
+  table.data td { padding:5px 8px; border-bottom:1px solid #eef1f4; }
+  tr.edge-row { cursor:pointer; }
+  tr.edge-row:hover { background:var(--accent-soft); }
+  tr.edge-row.selected { background:var(--hl); }
+  .steps-wrap { max-height:440px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+  tr.step-row.pass { background:var(--hl); }
+  tr.step-row.pass td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12.5px; color:var(--muted); margin:8px 0 2px;}
+  .legend i { display:inline-block; width:22px; vertical-align:-2px; margin-right:5px; border-radius:2px;}
+  .muted { color:var(--muted); }
+  .mono { font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .pill { background:#eef1f4; border-radius:5px; padding:0 6px; font-size:12px; }
+  .pass-list b { color:var(--accent); }
+  .scrollx { overflow-x:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>低温冷却管网 · 巡检机器人路线审计</h1>
+  <p>中国邮递员精确解：最小增程 · 同优集合精确计数 · 必重复 / 可重复 / 从不重复分类 · 检修口闭合路线</p>
+</header>
+
+<div class="wrap">
+  <!-- ============ 编辑区 ============ -->
+  <div>
+    <div id="error-box" role="alert"></div>
+
+    <div class="panel">
+      <h2>节点 <span class="hint">2–18 个，唯一 ASCII 名称</span></h2>
+      <table class="grid" id="node-table">
+        <thead><tr><th style="width:70%">名称</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row-actions">
+        <button class="btn" id="add-node" type="button">＋ 添加节点</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>管段 <span class="hint">1–32 条，标识唯一、正整数长度；可平行、不可自环</span></h2>
+      <table class="grid" id="edge-table">
+        <thead><tr>
+          <th style="width:26%">标识</th><th style="width:22%">端点 A</th>
+          <th style="width:22%">端点 B</th><th style="width:22%">长度</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row-actions">
+        <button class="btn" id="add-edge" type="button">＋ 添加管段</button>
+      </div>
+      <div class="depot-row">
+        <strong style="font-size:13px">检修口</strong>
+        <select id="depot"></select>
+      </div>
+      <div class="row-actions">
+        <button class="btn primary" id="audit-btn" type="button">▶ 发起审计</button>
+        <button class="btn" id="sample-btn" type="button">载入示例</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 结果区 ============ -->
+  <div id="result-area">
+    <div class="panel" id="placeholder">
+      <p class="muted">在左侧编辑管网并选择检修口，点击“发起审计”。成功后这里展示总长度、增加长度、
+      规范重复边集与同优分类，以及管网图与逐步闭合路线的联动视图。</p>
+    </div>
+
+    <div id="results" style="display:none">
+      <div class="panel">
+        <h2>审计结论</h2>
+        <div class="cards">
+          <div class="card"><div class="k">原管网总长度</div><div class="v" id="c-base"></div></div>
+          <div class="card add"><div class="k">最小增加长度</div><div class="v" id="c-added"></div></div>
+          <div class="card tot"><div class="k">巡检路线总长度</div><div class="v" id="c-total"></div></div>
+          <div class="card"><div class="k">最低增程集合数</div><div class="v" id="c-count"></div></div>
+          <div class="card"><div class="k">奇度节点</div><div class="v" id="c-odd" style="font-size:15px"></div></div>
+        </div>
+        <div style="margin-bottom:8px"><strong>规范重复边集（0 优先位向量，按标识顺序）：</strong></div>
+        <div class="vector" id="c-vector"></div>
+        <div style="margin-top:8px" id="c-dupids"></div>
+      </div>
+
+      <div class="result-grid">
+        <div class="panel">
+          <h2>管网图 <span class="hint">点选管段查看全部经过位置</span></h2>
+          <svg class="graph" id="graph" viewBox="0 0 600 440" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="legend">
+            <span><i style="background:var(--req)"></i>必重复</span>
+            <span><i style="background:repeating-linear-gradient(90deg,var(--opt) 0 5px,#fff 5px 9px)"></i>可重复</span>
+            <span><i style="background:var(--never)"></i>从不重复</span>
+            <span><i style="border:2.2px dashed var(--req);background:#fff;width:18px;height:18px;border-radius:50%"></i>奇度点</span>
+            <span><i style="border:3px solid var(--ok);background:#fff;width:18px;height:18px;border-radius:50%"></i>检修口</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>管段同优分类</h2>
+          <div class="steps-wrap" style="max-height:440px">
+            <table class="data" id="edge-data">
+              <thead><tr><th>标识</th><th>端点</th><th>长度</th><th>归属</th><th>经过步序</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>规范集合闭合路线 <span class="hint" id="route-hint"></span></h2>
+        <div class="steps-wrap" id="steps-wrap" style="max-height:420px">
+          <table class="data" id="step-table">
+            <thead><tr><th style="width:54px">步序</th><th style="width:90px">管段</th><th>走向</th>
+            <th style="width:80px">副本</th><th style="width:70px">长度</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------------- 编辑区状态 ---------------- */
+
+let nodeRows = [];   // {el(input)}
+let edgeRows = [];   // {id, u, v, length(inputs)}
+
+function el(tag, attrs, text) {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === "class") e.className = attrs[k];
+    else e.setAttribute(k, attrs[k]);
+  }
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function addNode(value) {
+  const tr = el("tr");
+  const td1 = el("td");
+  const inp = el("input", {type: "text", placeholder: "如 A"});
+  if (value !== undefined) inp.value = value;
+  td1.appendChild(inp);
+  const td2 = el("td");
+  const del = el("button", {class: "icon-btn", type: "button", title: "删除该行"}, "✕");
+  const row = {tr, inp};
+  del.onclick = () => {
+    tr.remove();
+    nodeRows = nodeRows.filter(r => r !== row);
+    refreshDepotOptions();
+  };
+  td2.appendChild(del);
+  tr.append(td1, td2);
+  document.querySelector("#node-table tbody").appendChild(tr);
+  nodeRows.push(row);
+  inp.addEventListener("input", refreshDepotOptions);
+  return inp;
+}
+
+function addEdge(vals) {
+  const tr = el("tr");
+  const mk = (placeholder, w, val) => {
+    const td = el("td");
+    const inp = el("input", {type: "text", placeholder});
+    if (w) inp.classList.add(w);
+    if (val !== undefined) inp.value = val;
+    if (placeholder === "A" || placeholder === "B") inp.setAttribute("list", "node-names");
+    td.appendChild(inp);
+    return {td, inp};
+  };
+  const idC = mk("e1", null, vals && vals.id);
+  const uC  = mk("A", null, vals && vals.u);
+  const vC  = mk("B", null, vals && vals.v);
+  const lenC = mk("正整数", "w-short", vals ? String(vals.length) : "");
+  lenC.inp.type = "number";
+  lenC.inp.setAttribute("min", "1");
+  lenC.inp.setAttribute("step", "1");
+  const tdDel = el("td");
+  const del = el("button", {class: "icon-btn", type:"button", title:"删除该行"}, "✕");
+  const edgeRow = {tr, id: idC.inp, u: uC.inp, v: vC.inp, length: lenC.inp};
+  del.onclick = () => {
+    tr.remove();
+    edgeRows = edgeRows.filter(r => r !== edgeRow);
+  };
+  tdDel.appendChild(del);
+  tr.append(idC.td, uC.td, vC.td, lenC.td, tdDel);
+  document.querySelector("#edge-table tbody").appendChild(tr);
+  edgeRows.push(edgeRow);
+}
+
+function refreshDepotOptions() {
+  const sel = document.getElementById("depot");
+  const prev = sel.value;
+  sel.innerHTML = "";
+  for (const r of nodeRows) {
+    const v = r.inp.value.trim();
+    if (!v) continue;
+    const o = el("option", {value: v}, v);
+    sel.appendChild(o);
+  }
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+}
+
+function collectPayload() {
+  return {
+    nodes: nodeRows.map(r => r.inp.value),
+    edges: edgeRows.map(r => ({
+      id: r.id.value, u: r.u.value, v: r.v.value,
+      length: r.length.value.trim() === "" ? null : Number(r.length.value),
+    })),
+    depot: document.getElementById("depot").value,
+  };
+}
+
+/* ---------------- 错误定位 ---------------- */
+
+function clearMarks() {
+  document.querySelectorAll(".row-error").forEach(e => e.classList.remove("row-error"));
+  document.querySelectorAll(".field-error").forEach(e => e.classList.remove("field-error"));
+  document.getElementById("error-box").style.display = "none";
+}
+
+function showError(err) {
+  clearMarks();
+  const box = document.getElementById("error-box");
+  let locText = "";
+  const loc = err.loc || {};
+  // 节点错误 field === "node"（含断连定位到的孤立节点）；其余带行号错误在管段表
+  const inNodeDomain = loc.field === "node";
+  if (typeof loc.row === "number") {
+    if (inNodeDomain && nodeRows[loc.row]) {
+      nodeRows[loc.row].tr.classList.add("row-error");
+      nodeRows[loc.row].inp.classList.add("field-error");
+      locText = `节点第 ${loc.row + 1} 行`;
+    } else if (edgeRows[loc.row]) {
+      edgeRows[loc.row].tr.classList.add("row-error");
+      if (loc.field && edgeRows[loc.row][loc.field]) {
+        edgeRows[loc.row][loc.field].classList.add("field-error");
+      }
+      locText = `管段第 ${loc.row + 1} 行${loc.field ? "（" + ({id:"标识",u:"端点 A",v:"端点 B",length:"长度"}[loc.field] || loc.field) + "）" : ""}`;
+    }
+  } else if (loc.field === "depot") {
+    document.getElementById("depot").classList.add("field-error");
+    locText = "检修口";
+  }
+  box.innerHTML = "";
+  if (locText) {
+    const s = el("span", {class: "loc"}, "【" + locText + "】");
+    box.appendChild(s);
+    box.appendChild(document.createTextNode(" " + err.message));
+  } else {
+    box.textContent = err.message;
+  }
+  box.style.display = "block";
+  // 失败：保留输入，清除旧结论
+  document.getElementById("results").style.display = "none";
+  document.getElementById("placeholder").style.display = "";
+}
+
+/* ---------------- 结果渲染 ---------------- */
+
+let LAST = null;
+let selectedEdge = null;
+
+function renderResults(r) {
+  LAST = r;
+  selectedEdge = null;
+  document.getElementById("placeholder").style.display = "none";
+  document.getElementById("results").style.display = "";
+
+  document.getElementById("c-base").textContent = r.base_length;
+  document.getElementById("c-added").textContent = r.added_length;
+  document.getElementById("c-total").textContent = r.total_length;
+  document.getElementById("c-count").textContent = r.optimal_count.toLocaleString("zh-CN");
+  document.getElementById("c-odd").textContent = r.odd_nodes.length ? r.odd_nodes.join(", ") : "无（欧拉管网）";
+
+  // 位向量：每位带 title=边标识，1 高亮
+  const vec = document.getElementById("c-vector");
+  vec.innerHTML = "";
+  r.edge_order.forEach((id, i) => {
+    const ch = el("span", {title: id}, r.canonical_vector[i]);
+    if (r.canonical_vector[i] === "1") ch.style.color = "var(--req)", ch.style.fontWeight = "700";
+    vec.appendChild(ch);
+  });
+  const dup = document.getElementById("c-dupids");
+  dup.innerHTML = "";
+  if (r.canonical_duplicates.length) {
+    dup.appendChild(el("span", {class:"muted"}, "规范集合重复："));
+    r.canonical_duplicates.forEach(id => {
+      dup.appendChild(el("span", {class:"badge required", style:"margin-left:6px"}, id + " ×2"));
+    });
+  } else {
+    dup.appendChild(el("span", {class:"badge never"}, "空集 — 零增程，原管网即存在欧拉回路"));
+  }
+
+  drawGraph(r);
+  drawEdgeTable(r);
+  drawSteps(r);
+  document.getElementById("route-hint").textContent =
+    `共 ${r.steps.length} 步，自 ${r.depot} 出发并回到 ${r.depot}；副本“原”=原管段，“复”=重复副本`;
+}
+
+/* ---- SVG 管网图：节点圆周布局，平行边弧形偏移 ---- */
+
+function drawGraph(r) {
+  const svg = document.getElementById("graph");
+  svg.innerHTML = "";
+  const NS = "http://www.w3.org/2000/svg";
+  const W = 600, H = 440, cx = W / 2, cy = H / 2 + 6, R = Math.min(W, H) / 2 - 70;
+  const n = r.nodes.length;
+  const pos = {};
+  r.nodes.forEach((name, i) => {
+    const ang = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(n, 1);
+    pos[name] = {x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang)};
+  });
+
+  // 平行边分组，计算弧偏移（SOH 作无冲突分隔符）
+  const pairSep = String.fromCharCode(1);
+  const pairKey = e => [e.u, e.v].sort().join(pairSep);
+  const pairCount = {};
+  const pairIndex = {};
+  r.edges.forEach(e => {
+    const key = pairKey(e);
+    pairIndex[e.id] = pairCount[key] || 0;
+    pairCount[key] = (pairCount[key] || 0) + 1;
+  });
+
+  const edgeLayer = elNS(NS, "g");
+  const nodeLayer = elNS(NS, "g");
+  svg.append(edgeLayer, nodeLayer);
+
+  function elNS(ns, tag, attrs, text) {
+    const x = document.createElementNS(ns, tag);
+    if (attrs) for (const k in attrs) x.setAttribute(k, attrs[k]);
+    if (text !== undefined) x.textContent = text;
+    return x;
+  }
+
+  r.edges.forEach(e => {
+    const a = pos[e.u], b = pos[e.v];
+    const key = pairKey(e);
+    const total = pairCount[key];
+    const idx = pairIndex[e.id];
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    let d;
+    let labelX = mx, labelY = my;
+    if (total === 1) {
+      d = `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+    } else {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const off = 26 * (idx - (total - 1) / 2);
+      const qx = mx + nx * off * 1.5, qy = my + ny * off * 1.5;
+      d = `M ${a.x} ${a.y} Q ${qx} ${qy} ${b.x} ${b.y}`;
+      labelX = (mx + qx) / 2; labelY = (my + qy) / 2;
+    }
+    const cls = r.classification[e.id];
+
+    // 重复边：底色衬线模拟双线
+    if (r.copies[e.id] === 2) {
+      const under = elNS(NS, "path", {d, fill:"none", stroke:"#fbfcfe", "stroke-width":7,
+        "stroke-linecap":"round"});
+      edgeLayer.appendChild(under);
+    }
+    const line = elNS(NS, "path", {d, class: "edge-line " + cls, "data-edge": e.id,
+      "stroke-linecap": "round"});
+    const hit = elNS(NS, "path", {d, class: "edge-hit", "data-edge": e.id});
+    edgeLayer.append(line, hit);
+    if (r.copies[e.id] === 2) {
+      const tag = elNS(NS, "text", {x: labelX, y: labelY - 6, class: "dup-tag",
+        "text-anchor": "middle"}, "×2");
+      edgeLayer.appendChild(tag);
+    }
+    hit.addEventListener("click", () => selectEdge(e.id));
+  });
+
+  // 节点
+  r.nodes.forEach(name => {
+    const p = pos[name];
+    const g = elNS(NS, "g", {class: "node-g", "data-node": name});
+    const isOdd = r.odd_nodes.includes(name);
+    g.appendChild(elNS(NS, "circle", {cx:p.x, cy:p.y, r:17, class:"node-circle" + (isOdd ? " odd":"")}));
+    if (name === r.depot) {
+      g.appendChild(elNS(NS, "circle", {cx:p.x, cy:p.y, r:23, class:"depot-ring"}));
+    }
+    g.appendChild(elNS(NS, "text", {x:p.x, y:p.y + 1, class:"node-label"}, name));
+    nodeLayer.appendChild(g);
+  });
+}
+
+/* ---- 管段分类表 ---- */
+
+function drawEdgeTable(r) {
+  const tb = document.querySelector("#edge-data tbody");
+  tb.innerHTML = "";
+  const clsText = {required: "必重复", optional: "可重复", never: "从不重复"};
+  r.edges.forEach(e => {
+    const tr = el("tr", {class: "edge-row", "data-edge": e.id});
+    tr.appendChild(el("td", {class:"mono"}, e.id));
+    tr.appendChild(el("td", null, `${e.u} — ${e.v}`));
+    tr.appendChild(el("td", null, String(e.length)));
+    const tdCls = el("td");
+    tdCls.appendChild(el("span", {class:"badge " + r.classification[e.id]}, clsText[r.classification[e.id]]));
+    if (r.copies[e.id] === 2) tdCls.appendChild(el("span", {class:"pill", style:"margin-left:6px;color:var(--req)"}, "规范×2"));
+    tr.appendChild(tdCls);
+    const passes = r.edge_passes[e.id] || [];
+    const tdP = el("td", {class:"pass-list mono"});
+    tdP.innerHTML = passes.map(p => `<b>${p}</b>`).join(", ");
+    tr.appendChild(tdP);
+    tr.onclick = () => selectEdge(e.id);
+    tb.appendChild(tr);
+  });
+}
+
+/* ---- 逐步路线 ---- */
+
+function drawSteps(r) {
+  const tb = document.querySelector("#step-table tbody");
+  tb.innerHTML = "";
+  r.steps.forEach(s => {
+    const tr = el("tr", {class:"step-row", "data-edge": s.edge_id});
+    tr.appendChild(el("td", {class:"mono"}, String(s.seq)));
+    tr.appendChild(el("td", {class:"mono"}, s.edge_id));
+    tr.appendChild(el("td", null, `${s.from} → ${s.to}`));
+    const tdCopy = el("td");
+    tdCopy.appendChild(el("span", {class:"badge " + (s.copy === 1 ? "required" : "copy1")},
+      s.copy === 1 ? "重复副本" : "原管段"));
+    tr.appendChild(tdCopy);
+    tr.appendChild(el("td", {class:"mono"}, String(s.length)));
+    tr.style.cursor = "pointer";
+    tr.onclick = () => selectEdge(s.edge_id);
+    tb.appendChild(tr);
+  });
+}
+
+/* ---- 联动选择 ---- */
+
+function selectEdge(id) {
+  if (selectedEdge === id) { selectedEdge = null; }
+  else selectedEdge = id;
+  const r = LAST;
+  document.querySelectorAll("#graph .edge-line").forEach(p => {
+    p.classList.toggle("selected", !!selectedEdge && p.dataset.edge === selectedEdge);
+    p.classList.toggle("dim", !!selectedEdge && p.dataset.edge !== selectedEdge);
+  });
+  document.querySelectorAll("#graph .edge-hit").forEach(p =>
+    p.classList.toggle("selected", !!selectedEdge && p.dataset.edge === selectedEdge));
+  document.querySelectorAll("#graph .node-g").forEach(g => g.classList.toggle("dim", false));
+  document.querySelectorAll("tr.edge-row").forEach(tr =>
+    tr.classList.toggle("selected", !!selectedEdge && tr.dataset.edge === selectedEdge));
+  document.querySelectorAll("tr.step-row").forEach(tr =>
+    tr.classList.toggle("pass", !!selectedEdge && tr.dataset.edge === selectedEdge));
+
+  if (selectedEdge) {
+    const first = document.querySelector(`tr.step-row.pass`);
+    if (first) first.scrollIntoView({block: "center", behavior: "smooth"});
+    const erow = document.querySelector(`tr.edge-row.selected`);
+    if (erow) erow.scrollIntoView({block: "nearest"});
+  }
+}
+
+/* ---------------- 审计请求 ---------------- */
+
+document.getElementById("add-node").onclick = () => { addNode(); refreshDepotOptions(); };
+document.getElementById("add-edge").onclick = () => addEdge();
+document.getElementById("audit-btn").onclick = async () => {
+  clearMarks();
+  let resp;
+  try {
+    resp = await fetch("/api/audit", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(collectPayload()),
+    });
+  } catch (e) {
+    showError({code:"network", message:"网络错误：无法连接审计服务"});
+    return;
+  }
+  const data = await resp.json();
+  if (!resp.ok) {
+    showError(data.error || {message: "审计失败"});
+    return;
+  }
+  renderResults(data.result);
+};
+
+document.getElementById("sample-btn").onclick = () => {
+  loadSample();
+};
+
+// 节点名 datalist
+document.body.appendChild(el("datalist", {id: "node-names"}));
+
+function refreshDatalist(names) {
+  const dl = document.getElementById("node-names");
+  dl.innerHTML = "";
+  names.forEach(v => dl.appendChild(el("option", {value: v})));
+}
+
+/* ---------------- 示例管网 ---------------- */
+
+function loadSample() {
+  document.querySelector("#node-table tbody").innerHTML = "";
+  document.querySelector("#edge-table tbody").innerHTML = "";
+  nodeRows = []; edgeRows = [];
+  ["A","B","C","D","E"].forEach(n => addNode(n));
+  [
+    {id:"e1", u:"A", v:"B", length:10},
+    {id:"e2", u:"A", v:"C", length:4},
+    {id:"e3", u:"B", v:"C", length:5},
+    {id:"e4", u:"B", v:"D", length:7},
+    {id:"e5", u:"C", v:"D", length:8},
+    {id:"e6", u:"C", v:"E", length:12},
+    {id:"e7", u:"D", v:"E", length:6},
+  ].forEach(e => addEdge(e));
+  refreshDepotOptions();
+  document.getElementById("depot").value = "A";
+  refreshDatalist(["A","B","C","D","E"]);
+}
+
+// 编辑节点时同步 datalist
+nodeRowsHook();
+function nodeRowsHook() {
+  const mo = new MutationObserver(() => refreshDatalist(nodeRows.map(r => r.inp.value.trim()).filter(Boolean)));
+  mo.observe(document.querySelector("#node-table tbody"), {childList:true});
+}
+
+/* ---------------- 初始 ---------------- */
+["A","B","C","D"].forEach(n => addNode(n));
+[
+  {id:"e1", u:"A", v:"B", length:3},
+  {id:"e2", u:"B", v:"C", length:4},
+  {id:"e3", u:"C", v:"D", length:5},
+  {id:"e4", u:"D", v:"A", length:6},
+  {id:"e5", u:"A", v:"C", length:10},
+].forEach(e => addEdge(e));
+refreshDepotOptions();
+document.getElementById("depot").value = "A";
+refreshDatalist(["A","B","C","D"]);
+</script>
+</body>
+</html>
